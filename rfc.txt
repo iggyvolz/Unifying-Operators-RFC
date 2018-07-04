@@ -1,0 +1,115 @@
+====== PHP RFC: Unifying Logical Operators ======
+  * Version: 0.1
+  * Date: 2018-07-XX
+  * Author: Ryan Volz, iggyvolz@gmail.com
+  * Status: Draft
+  * First Published at: http://wiki.php.net/rfc/unifying_logical_operators
+
+
+===== Introduction =====
+PHP contains two sets of logical operators: and/or/xor, and &&/||/!=.  The former set is rarely used, and its only difference from the latter operators is suprising.  This RFC proposes to deprecate and (in 8.0) remove the and/or/xor operators.
+
+===== Motivation =====
+==== Duplicated operators ====
+The behaviour between operators may appear to be identical at first glance (especially since the symbols are used in some languages, but the word versions are used in other languages).  This creates confusion for newcomers (as well as existing programmers) when there are two operators for a simple operation.
+
+==== Behavioural difference ====
+While the operators appear on the surface to perform the same operation, they are slighly different.  As stated on the [http://php.net/manual/en/language.operators.precedence.php|operator precedence page], and/xor/or has a lower precedence than the assignment, comparison, and ternary operators.  This means that code like the code below:
+
+ $f=true and false;
+
+Is interpreted as:
+
+ ($f=true) and false;
+
+Which assigns true to f (where the programmer likely intended to set $f to false).
+
+In most languages [ref], the assignment operator has the lowest precedence, and this behaviour is expected by most programmers (x=... should assign the result to x).
+
+Because of the precedence difference, code like the above is the *only* difference between the operators. *TODO check ternary and conditional - can those have an effect?*
+
+==== Rare usage ====
+*TODO* formalize analysis and provide actual evidence
+
+In an analysis of the top 30 PHP projects on GitHub, 21 did not use the and, or, or xor operators whatsoever.  All but one had usages of the operators in fewer than 20 files.
+
+Typical usages of the text operators are:
+=== Alias of standard operators ===
+This case is a case where a standard and/or/xor was desired, but the text version was chosen (as, in this case, they have identical functionality):
+
+ if( (!$banner) or (empty($banner)) ) {
+
+Simply changing and to &&, or to ||, and xor to != will fix the backwards compatibility break.  If the aliasing option is chosen, there will be no backwards compatibility break in this case apart from issued notices.
+
+=== Control flow operator ===
+As suggested [https://stackoverflow.com/a/5998351|here], the and/or operators may be used for control flow, typically to check if a variable is defined:
+
+ defined('BASEPATH') OR exit('No direct script access allowed');
+
+However, the property of control flow is not dependent on the precedence, but rather short-circuiting, which is an identical property of all control operators, and thus the behaviour between identifiers is identical, as long as the resultant value is not assigned to a variable (see the next section if this is the case).
+
+=== Error handling ===
+The or (or, less commonly, and) operator may be used for error checking:
+
+ $gdImage = @imagecreatetruecolor(120, 20) or die('Cannot Initialize new GD image stream');
+
+This code is equivalent to:
+ $gdImage = @imagecreatetruecolor(120, 20);
+ if(!$gdImage)
+ {
+     die('Cannot Initialize new GD image stream');
+ }
+
+This is an incompatibility with the traditional or operator, as it always returns a boolean regardless of the actual type or value of the values being compared by the operator.  In 8.0, the statement will need to be refactored to use an if-statement to check for the error instead of performing the error check inline.
+[https://github.com/PHPOffice/PHPExcel/blob/c269793ee715fb5a15f0b2ad25c064d9ee6e8e53/Examples/25inmemoryimage.php#L57|The example given here] is the only instance of an and/or/xor relying on this behaviour within the top 30 PHP projects on GitHub.
+===== Proposal =====
+The three operators, T_LOGICAL_OR, T_LOGICAL_AND, and T_LOGICAL_XOR should be marked as deprecated in the next minor version:
+ Deprecated: (and/or/xor) is being removed in the next major version of PHP, use (&&/||/!=) instead.
+
+As of the next major version, the operators should be removed, at which point using the operators would be treated as undefined constants.
+
+Alternatively, the operators may not be removed, but their behaviour aliased to the &&/||/!= operators.  In that case, the following notice will be issued in the next minor version (*todo can we figure out only cases that will be affected*):
+ Notice: The behaviour of (and/or/xor) is being modified in the next version.
+
+As of the next major version, the operators will be aliased to &&/||/!=
+
+===== Backward Incompatible Changes =====
+With the remove choice, any code relying on the and/or/xor operators will receive a deprecation notice as of PHP 7.X.  As of 8.0 code will need to use the &&/||/!= operators.
+
+If the alias option is chosen, any code which uses and/or/xor in a way that does not rely on the precedence difference will be unaffected apart from notices being issued until 8.0.  Code which relies on the precedence difference will need to modify their code by parenthesizing the assignment statement.  It may be possible to only issue notices for code which relies on the precedence difference.
+
+===== Proposed PHP Version(s) =====
+List the proposed PHP versions that the feature will be included in.  Use relative versions such as "next PHP 7.x" or "next PHP 7.x.y".
+
+===== RFC Impact =====
+==== To SAPIs ====
+Describe the impact to CLI, Development web server, embedded PHP etc.
+
+==== To Existing Extensions ====
+Will existing extensions be affected?
+
+==== To Opcache ====
+It is necessary to develop RFC's with opcache in mind, since opcache is a core extension distributed with PHP.
+
+Please explain how you have verified your RFC's compatibility with opcache.
+
+===== Open Issues =====
+Make sure there are no open issues when the vote starts!
+
+===== Unaffected PHP Functionality =====
+List existing areas/features of PHP that will not be changed by the RFC.
+
+This helps avoid any ambiguity, shows that you have thought deeply about the RFC's impact, and helps reduces mail list noise.
+
+===== Vote ======
+There will be three choices for this vote:
+ * Remove - Will deprecate the and, or, and xor operators as of the next minor version, and remove them as of the next major version
+ * Alias - Will issue a notice upon use of the and, or, and xor operators as of the next minor version to warn of changing behaviour, and alias them to &&, ||, and != as of the next major version
+ * Status Quo - Do not implement any change
+
+As this is a language change, a 2/3 majority for any option is required.
+
+In the event that Remove and Alias together earn more than 2/3 of the vote but neither one in particular gets 2/3 of the vote, a re-vote may be held eliminating the less popular option.
+
+===== Patches and Tests =====
+WIP
