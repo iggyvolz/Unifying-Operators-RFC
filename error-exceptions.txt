@@ -32,7 +32,7 @@ This RFC proposes an opt-in declare statement (similar to declare_types) to over
 This RFC introduces a new ''declare()'' directive, ''error_exception'', which takes either ''1'' or ''0''.  If ''1'' is passed, any error occurring in this file (TODO: which errors) will be promoted to an ErrorException.  If ''0'' is passed (the default if the statement is not declared), the error will be triggered as the current behaviour.
 
 ===== Backward Incompatible Changes =====
-As ''error_exception'' defaults to 0, there are no backward incompatibilities. 
+As ''error_exception'' defaults to 0, there are no backward incompatibilities.  Additionally, using an undefined declare() is an error, so the reservation of ''error_exception'' is not a backwards incompatibility.
 
 ===== Proposed PHP Version(s) =====
 Next minor version (8.0).
@@ -42,13 +42,13 @@ Next minor version (8.0).
 None.
 
 ==== To Existing Extensions ====
-TODO: Is the change in zend_error_va_list enough to affect extensions?
+None.
 
 ==== To Opcache ====
 None.
 
 ===== Open Issues =====
-* The name error_exception does not clearly describe the behaviour of this switch
+* The name error_exception may not clearly describe the behaviour of this switch
 
 ===== Unaffected PHP Functionality =====
 Any error triggered during compile time continues to operate normally, as we have not entered PHP execution.
