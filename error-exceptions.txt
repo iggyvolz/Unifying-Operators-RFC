@@ -29,7 +29,73 @@ However, this approach has several issues:
 This RFC proposes an opt-in declare statement (similar to declare_types) to override the default error behaviour with an exception being thrown in all cases except compile errors (which are not possible to handle in userspace).
 
 ===== Proposal =====
-This RFC introduces a new ''declare()'' directive, ''error_exception'', which takes either ''1'' or ''0''.  If ''1'' is passed, any error occurring in this file (TODO: which errors) will be promoted to an ErrorException.  If ''0'' is passed (the default if the statement is not declared), the error will be triggered as the current behaviour.
+This RFC introduces a new ''declare()'' directive, ''error_exception'', which takes a bitwise combination of error constants (https://www.php.net/manual/en/errorfunc.constants.php), defaulting to ''0''.  When a PHP error is triggered, the following behaviour is followed:
+
+* Any E_ERROR, E_PARSE, E_CORE_ERROR, E_CORE_WARNING, E_COMPILE_ERROR, E_COMPILE_WARNING is triggered as it is currently
+* Any error occurring at runtime, outside of the program scope, is triggered as it is currently
+* If the error type is in the bitwise combination of error_exception, the error will be converted to an ErrorException object, which will be thrown in lieu of triggering the error
+* Otherwise, the error is handled as it is currently.
+
+====== Uncatchable errors ======
+Any error which cannot be handled by set_error_handler will not be subject to exception promotion.  As per the documentation, this includes the following error types: E_ERROR, E_PARSE, E_CORE_ERROR, E_CORE_WARNING, E_COMPILE_ERROR, E_COMPILE_WARNING.
+
+Additionally, errors which do not occur within runtime context cannot be caught, and thus will not be promoted:
+<code php>
+<?php
+declare(error_exception=E_ALL);
+declare(something_that_doesnt_exist=1);
+</code>
+
+The warning from using ''something_that_doesnt_exist'' will still be triggered.
+
+====== Interaction with error_reporting ======
+When deciding whether to promote an error to an exception, ''error_exception'' ignores ''error_reporting''.  This is done to ensure consistent behaviour across environments.
+
+For example, the following exception is caught:
+<code php>
+declare(error_exception=E_ALL);
+ini_set("error_reporting", 0);
+try {
+  echo $fakeVar;
+} catch(ErrorException $e) {
+  echo "Caught exception";
+}
+</code>
+
+Errors which are not promoted by ''error_reporting'' are subject to the ''error_reporting'' check.
+
+For example, the following code triggers a warning:
+<code php>
+declare(error_exception=0);
+ini_set("error_reporting", E_ALL);
+try {
+  echo $fakeVar;
+} catch(ErrorException $e) {
+  echo "Caught exception";
+}
+</code>
+
+====== Interaction with error suppression operator ======
+As the error suppression operator ''@'' only affects PHP errors, it will have no effect on a promoted ErrorException, as it currently has no effect on any exception.
+
+For example, both error suppression operators in the following snippet do not have any effect:
+<code php>
+// file1.php
+<?php
+require_once "file2.php";
+@doTheThing();
+// file2.php
+<?php
+declare(error_exception=E_ALL);
+function doTheThing(){
+  try {
+    $fh = @fopen("x", "r");
+  } catch(ErrorException $e) {
+    echo "I have caught an error!";
+  }
+}
+</code>
+As no E_WARNING is ever issued, there is no error to suppress.  As a consequence, error suppression operators on both the declaring file as well as the calling file have no effect on ErrorExceptions which are promoted.
 
 ===== Backward Incompatible Changes =====
 As ''error_exception'' defaults to 0, there are no backward incompatibilities.  Additionally, using an undefined declare() is an error, so the reservation of ''error_exception'' is not a backwards incompatibility.
@@ -48,19 +114,69 @@ None.
 None.
 
 ===== Open Issues =====
-* The name error_exception may not clearly describe the behaviour of this switch
+Name of the declaration (vote)
 
 ===== Unaffected PHP Functionality =====
 Any error triggered during compile time continues to operate normally, as we have not entered PHP execution.
 
 ===== Future Scope =====
 Potential future improvements (not part of this RFC) include:
-* Creating separate classes for different error levels so they can be caught differently (ex. NoticeErrorException)
-* More specific errors for particular function when error_exception is 1 (ex. undefined variables might throw an UndefinedVariableException if error_exception is 1, or throw a warning if error_exception is 0)
+====== Classes per error level =====
+We could create a separate class for each error level so they could be caught individually:
+<code php>
+<?php
+try {
+  // ...
+} catch(NoticeErrorException $e) {
+  echo "There was a notice";
+} catch(WarningErrorException $e) {
+  echo "There was a notice";
+}
+</code>
+====== Specific exceptions ======
+More specific ErrorExceptions could be thrown for different errors, potentially conditional on the ''error_exception'' value:
+<code php>
+<?php
+try {
+  echo $foo;
+} catch(UndefinedVariableException $e) {
+  echo '$foo was undefined';
+}
+</code>
+====== Lambda catch ======
+One issue that this exposes is that exceptions can only be disambugated by type and not content:
+<code php>
+<?php
+try {
+  echo $foo;
+} catch(ErrorException $e) { // Only want to catch undefined variables here
+  if(preg_match($e->getMessage(), "/Undefined variable/") === 1) {
+    echo "Whoops, undefined variable";
+  } else {
+    throw $e; // Oh no, I actually didn't want to handle this
+  }
+}
+</code>
+
+The reference to where $e was thrown (ex. in debuggers) refers to the throw line rather than where the error actually occurred.
+
+A lambda could be given to determine whether an exception should be caught:
+
+<code php>
+<?php
+try {
+  echo $foo;
+} catch(ErrorException $e => (preg_match($e->getMessage(), "/Undefined variable/") === 1)) {
+    echo "Whoops, undefined variable";
+}
+</code>
+====== Namespaced scoped declares ======
+The RFC https://wiki.php.net/rfc/namespace_scoped_declares could be useful to reduce the number of declare() statements needed.  This declaration would operate like strict_types.
 
 ===== Proposed Voting Choices =====
 * Should the declaration as defined in this RFC be accepted? (2/3)
 * What should be the name of the declaration statement be? (majority of: error_exception/strict_errors/error_exceptions/???)
+* If you voted no, why not? (prefer not to answer/would cause confusion for copy-pasted code/do not like name choices/should not be a declaration/other)
 
 ===== Patches and Tests =====
 Prototype patch (partially complete): https://github.com/iggyvolz/php-src/tree/strict_errors
