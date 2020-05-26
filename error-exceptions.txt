@@ -97,6 +97,40 @@ function doTheThing(){
 </code>
 As no E_WARNING is ever issued, there is no error to suppress.  As a consequence, error suppression operators on both the declaring file as well as the calling file have no effect on ErrorExceptions which are promoted.
 
+====== Constant expressions in declare() ======
+Because of the usefulness of error reporting constants (https://www.php.net/manual/en/errorfunc.constants.php), this RFC also proposes (as a secondary vote) to allow constant scalar expressions (https://wiki.php.net/rfc/const_scalar_exprs) as the value for a declare() statement.  Because of this, the following will be allowed:
+
+<code php>
+declare(error_exception=E_ALL);
+declare(error_exception=E_ALL&~E_STRICT);
+</code>
+
+As a side effect, other declare() statements will also accept constant scalar expressions:
+<code php>
+declare(ticks=E_ALL - 30);
+declare(encoding=PHP_VERSION);
+</code>
+
+Non-constant expressions and undefined constants will continue to fail:
+<code php>
+declare(error_exception=E_THIS_IS_FAKE); // Fails
+declare(ticks=strlen("something")); // Fails
+</code>
+
+Incorrect types for a declare will also fail:
+<code php>
+declare(error_exception="everything"); // Fails
+</code>
+
+====== Block mode ======
+Due to implementation constraints, block mode will not be allowed for this declare:
+<code php>
+// NOT ALLOWED
+declare(error_exception=E_ALL) {
+  // statements
+}
+</code>
+
 ===== Backward Incompatible Changes =====
 As ''error_exception'' defaults to 0, there are no backward incompatibilities.  Additionally, using an undefined declare() is an error, so the reservation of ''error_exception'' is not a backwards incompatibility.
 
